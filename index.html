@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 塔罗牌占卜</title>
+<style>
+  :root {
+    --bg: #0a0a14;
+    --surface: #12121f;
+    --surface2: #1a1a2e;
+    --text: #c8c8d4;
+    --text-dim: #6e6e80;
+    --gold: #c9a96e;
+    --gold-light: #e0c890;
+    --purple: #7b4fa0;
+    --purple-light: #9b6fc0;
+    --accent: #d4a574;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Georgia','Noto Serif SC','STSong',serif;
+    min-height: 100vh; min-height: 100dvh;
+    overflow-x: hidden;
+  }
+
+  /* ── Starfield ── */
+  .stars { position:fixed; top:0; left:0; width:100%; height:100%; pointer-events:none; z-index:0; }
+  .star {
+    position:absolute; background:white; border-radius:50%;
+    animation: twinkle var(--dur) ease-in-out infinite;
+    animation-delay: var(--delay); opacity:0;
+  }
+  @keyframes twinkle {
+    0%,100% { opacity:0.2; transform:scale(1); }
+    50% { opacity:1; transform:scale(1.8); }
+  }
+
+  /* ── App Layout ── */
+  .app { position:relative; z-index:1; max-width:460px; margin:0 auto; padding:20px; min-height:100dvh; }
+
+  /* ── Screens ── */
+  .screen { display:none; }
+  .screen.active { display:flex; flex-direction:column; align-items:center; animation: fadeSlideIn .5s ease; }
+  @keyframes fadeSlideIn { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+
+  /* ── Screen 1: Question ── */
+  .mystic-title {
+    text-align:center; margin-top:30px; margin-bottom:8px;
+  }
+  .mystic-title .moon { font-size:3em; display:block; margin-bottom:8px; }
+  .mystic-title h1 { font-size:1.8em; color:var(--gold); font-weight:normal; letter-spacing:6px; }
+  .mystic-title .sub { color:var(--text-dim); font-size:.85em; letter-spacing:2px; margin-top:4px; }
+
+  .question-area { width:100%; margin-top:28px; }
+  .question-area label { color:var(--gold-light); font-size:.95em; letter-spacing:2px; display:block; margin-bottom:10px; text-align:center; }
+  .question-input {
+    width:100%; padding:14px 16px; border-radius:10px;
+    background:var(--surface); border:1px solid #2a2a3e;
+    color:var(--text); font-family:inherit; font-size:1em;
+    resize:none; outline:none; transition:border-color .3s;
+  }
+  .question-input:focus { border-color:var(--purple); }
+  .question-input::placeholder { color:#4a4a5e; }
+
+  .quick-questions { display:flex; flex-wrap:wrap; gap:8px; justify-content:center; margin-top:14px; }
+  .quick-btn {
+    background:var(--surface2); border:1px solid #2a2a3e; border-radius:20px;
+    padding:8px 18px; color:var(--text); cursor:pointer; font-family:inherit;
+    font-size:.85em; transition:all .2s;
+  }
+  .quick-btn:hover { border-color:var(--purple-light); color:var(--gold-light); }
+
+  .btn-start {
+    margin-top:32px; padding:14px 48px; border-radius:30px;
+    background:linear-gradient(135deg, #6b3fa0, #4a2080);
+    border:none; color:#e0d0f0; cursor:pointer; font-family:inherit;
+    font-size:1.1em; letter-spacing:3px; transition:all .3s;
+    box-shadow:0 0 30px rgba(123,79,160,.3);
+  }
+  .btn-start:hover { box-shadow:0 0 50px rgba(123,79,160,.5); transform:translateY(-2px); }
+  .btn-start:disabled { opacity:.4; pointer-events:none; }
+
+  /* ── Settings gear ── */
+  .settings-gear {
+    position:fixed; bottom:24px; right:24px; z-index:10;
+    width:40px; height:40px; border-radius:50%; background:var(--surface2);
+    border:1px solid #2a2a3e; color:var(--text-dim); cursor:pointer;
+    font-size:1.2em; display:flex; align-items:center; justify-content:center;
+    transition:all .2s;
+  }
+  .settings-gear:hover { color:var(--gold); border-color:var(--gold); }
+
+  /* ── Screen 2: Card Draw ── */
+  .card-area { display:flex; gap:20px; justify-content:center; flex-wrap:wrap; margin-top:30px; width:100%; }
+  .card-slot { display:flex; flex-direction:column; align-items:center; gap:10px; }
+  .card-slot .position-label { color:var(--purple-light); font-size:.8em; letter-spacing:2px; }
+
+  .card-wrapper { perspective:800px; width:120px; height:190px; cursor:pointer; }
+  .card-wrapper.flipped .card-inner { transform:rotateY(180deg); }
+  .card-wrapper.revealed { pointer-events:none; }
+
+  .card-inner {
+    position:relative; width:100%; height:100%;
+    transform-style:preserve-3d; transition:transform .7s cubic-bezier(.4,0,.2,1);
+  }
+  .card-back, .card-face {
+    position:absolute; width:100%; height:100%; backface-visibility:hidden;
+    border-radius:12px; display:flex; flex-direction:column; align-items:center; justify-content:center;
+  }
+  .card-back {
+    background:linear-gradient(135deg, #1a1040, #2a1050);
+    border:2px solid #4a3080;
+    background-image:
+      radial-gradient(circle at 30% 40%, rgba(123,79,160,.3) 0%, transparent 50%),
+      radial-gradient(circle at 70% 60%, rgba(201,169,110,.1) 0%, transparent 50%);
+  }
+  .card-back .card-pattern { font-size:2.5em; opacity:.6; }
+  .card-back::after {
+    content:'✦'; position:absolute; font-size:.8em; color:var(--gold); opacity:.5;
+  }
+
+  .card-face {
+    background:linear-gradient(135deg, #1a1530, #0f0f24);
+    border:2px solid var(--gold); transform:rotateY(180deg);
+    padding:12px; text-align:center; gap:4px;
+  }
+  .card-face .card-emoji { font-size:2.5em; }
+  .card-face .card-name { color:var(--gold); font-size:.75em; letter-spacing:1px; margin-top:4px; }
+  .card-face .card-keywords { color:var(--text-dim); font-size:.65em; margin-top:2px; }
+  .card-face .card-position { font-size:.6em; color:var(--purple-light); margin-top:4px; }
+  .card-face.reversed .card-emoji { transform:rotate(180deg); }
+
+  .draw-hint { color:var(--text-dim); text-align:center; margin-top:24px; font-size:.85em; letter-spacing:1px; }
+
+  .btn-reveal-all {
+    margin-top:24px; padding:10px 32px; border-radius:20px;
+    background:transparent; border:1px solid var(--gold); color:var(--gold);
+    cursor:pointer; font-family:inherit; font-size:.9em; letter-spacing:2px;
+    transition:all .3s;
+  }
+  .btn-reveal-all:hover { background:rgba(201,169,110,.1); }
+
+  /* ── Screen 3: Reading ── */
+  .reading-header { text-align:center; margin-top:20px; margin-bottom:20px; }
+  .reading-header h2 { color:var(--gold); font-weight:normal; letter-spacing:3px; font-size:1.3em; }
+  .reading-cards { display:flex; gap:12px; justify-content:center; margin-bottom:24px; }
+  .mini-card {
+    background:var(--surface); border:1px solid #2a2a3e; border-radius:10px;
+    padding:12px; text-align:center; width:100px;
+  }
+  .mini-card .emoji { font-size:1.8em; }
+  .mini-card .name { color:var(--gold); font-size:.7em; margin-top:4px; }
+  .mini-card .pos { color:var(--purple-light); font-size:.6em; }
+
+  .reading-text {
+    width:100%; background:var(--surface); border:1px solid #2a2a3e;
+    border-radius:12px; padding:24px; line-height:2; font-size:.95em;
+    white-space:pre-wrap; min-height:300px;
+  }
+  .reading-text.loading {
+    display:flex; align-items:center; justify-content:center; color:var(--text-dim);
+  }
+  .reading-text.loading::after {
+    content:'✨ 正在连接塔罗之力...'; animation:pulse 1.5s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity:.4; } 50% { opacity:1; } }
+
+  .btn-row { display:flex; gap:12px; margin-top:20px; flex-wrap:wrap; justify-content:center; }
+  .btn-outline {
+    padding:10px 24px; border-radius:20px; background:transparent;
+    border:1px solid var(--purple); color:var(--purple-light);
+    cursor:pointer; font-family:inherit; font-size:.85em; letter-spacing:1px;
+    transition:all .2s;
+  }
+  .btn-outline:hover { background:rgba(123,79,160,.1); }
+
+  /* ── API Key Modal ── */
+  .modal-overlay {
+    display:none; position:fixed; top:0; left:0; width:100%; height:100%;
+    background:rgba(0,0,0,.8); z-index:100; justify-content:center; align-items:center;
+  }
+  .modal-overlay.show { display:flex; }
+  .modal {
+    background:var(--surface); border:1px solid var(--purple); border-radius:14px;
+    padding:28px; max-width:400px; width:90%;
+  }
+  .modal h3 { color:var(--gold); font-weight:normal; letter-spacing:2px; margin-bottom:16px; }
+  .modal p { color:var(--text-dim); font-size:.85em; margin-bottom:12px; line-height:1.6; }
+  .modal input {
+    width:100%; padding:12px; border-radius:8px; background:var(--bg);
+    border:1px solid #2a2a3e; color:var(--text); font-family:inherit; font-size:.9em;
+    margin-bottom:12px; outline:none;
+  }
+  .modal input:focus { border-color:var(--purple); }
+  .modal .btn-row { justify-content:flex-end; }
+  .modal .link { color:var(--purple-light); font-size:.8em; }
+
+  /* ── History ── */
+  .history-list { width:100%; margin-top:16px; }
+  .history-item {
+    background:var(--surface2); border:1px solid #1e1e32; border-radius:8px;
+    padding:12px 16px; margin-bottom:8px; cursor:pointer; transition:all .2s;
+    display:flex; justify-content:space-between; align-items:center;
+  }
+  .history-item:hover { border-color:var(--purple); }
+  .history-item .q { color:var(--text); font-size:.9em; flex:1; }
+  .history-item .date { color:var(--text-dim); font-size:.7em; }
+
+  @media (max-width:400px) {
+    .card-wrapper { width:95px; height:155px; }
+    .card-area { gap:10px; }
+    .card-face .card-emoji { font-size:2em; }
+    .card-face .card-name { font-size:.7em; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Stars -->
+<div class="stars" id="stars"></div>
+
+<!-- App -->
+<div class="app" id="app">
+
+  <!-- ═══ SCREEN 1: Question ═══ -->
+  <div class="screen active" id="screen-question">
+    <div class="mystic-title">
+      <span class="moon">🌙</span>
+      <h1>塔 罗 占 卜</h1>
+      <div class="sub">AI 解读 · 三张牌阵</div>
+    </div>
+
+    <div class="question-area">
+      <label>你想问什么？</label>
+      <textarea class="question-input" id="questionInput" rows="2"
+        placeholder="默念你的问题，然后写在这里…"
+        maxlength="200"></textarea>
+      <div class="quick-questions">
+        <button class="quick-btn" onclick="setQuestion('我的感情会顺利吗？')">💕 感情</button>
+        <button class="quick-btn" onclick="setQuestion('我的事业发展方向是什么？')">💼 事业</button>
+        <button class="quick-btn" onclick="setQuestion('我最近的财运如何？')">💰 财运</button>
+        <button class="quick-btn" onclick="setQuestion('我接下来的生活会有什么变化？')">🔮 运势</button>
+        <button class="quick-btn" onclick="setQuestion('我该如何做出这个重要的选择？')">⚖️ 抉择</button>
+      </div>
+    </div>
+
+    <button class="btn-start" id="btnStart" onclick="startDivination()">✨ 开 始 占 卜</button>
+  </div>
+
+  <!-- ═══ SCREEN 2: Card Draw ═══ -->
+  <div class="screen" id="screen-draw">
+    <div class="mystic-title">
+      <span class="moon">🃏</span>
+      <h2 style="font-size:1.3em; color:var(--gold); font-weight:normal; letter-spacing:4px;">抽取三张牌</h2>
+      <div class="sub" style="margin-top:4px;">过去 · 现在 · 未来</div>
+    </div>
+
+    <div class="card-area" id="cardArea">
+      <div class="card-slot">
+        <span class="position-label">🌅 过去</span>
+        <div class="card-wrapper" id="card0" onclick="flipCard(0)">
+          <div class="card-inner">
+            <div class="card-back"><span class="card-pattern">🔮</span></div>
+            <div class="card-face"><span class="card-emoji"></span><span class="card-name"></span><span class="card-keywords"></span><span class="card-position"></span></div>
+          </div>
+        </div>
+      </div>
+      <div class="card-slot">
+        <span class="position-label">☀️ 现在</span>
+        <div class="card-wrapper" id="card1" onclick="flipCard(1)">
+          <div class="card-inner">
+            <div class="card-back"><span class="card-pattern">🔮</span></div>
+            <div class="card-face"><span class="card-emoji"></span><span class="card-name"></span><span class="card-keywords"></span><span class="card-position"></span></div>
+          </div>
+        </div>
+      </div>
+      <div class="card-slot">
+        <span class="position-label">🌙 未来</span>
+        <div class="card-wrapper" id="card2" onclick="flipCard(2)">
+          <div class="card-inner">
+            <div class="card-back"><span class="card-pattern">🔮</span></div>
+            <div class="card-face"><span class="card-emoji"></span><span class="card-name"></span><span class="card-keywords"></span><span class="card-position"></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="draw-hint" id="drawHint">👆 依次点击三张牌翻开</div>
+  </div>
+
+  <!-- ═══ SCREEN 3: Reading ═══ -->
+  <div class="screen" id="screen-reading">
+    <div class="reading-header">
+      <h2>✨ 占卜结果</h2>
+      <div class="sub" id="readingQuestion" style="color:var(--text-dim); margin-top:4px;"></div>
+    </div>
+    <div class="reading-cards" id="readingCards"></div>
+    <div class="reading-text loading" id="readingText"></div>
+    <div class="btn-row">
+      <button class="btn-outline" onclick="resetDivination()">🔄 重新占卜</button>
+      <button class="btn-outline" onclick="shareReading()" id="btnShare" style="display:none;">📤 分享结果</button>
+      <button class="btn-outline" onclick="showScreen('question')">🏠 返回首页</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- Settings Button -->
+<button class="settings-gear" onclick="openSettings()" title="设置 API Key">⚙️</button>
+
+<!-- API Key Modal -->
+<div class="modal-overlay" id="modal-settings">
+  <div class="modal">
+    <h3>🔑 设置 API Key</h3>
+    <p>为了生成 AI 占卜解读，需要你的 Anthropic API Key。Key 只保存在你的浏览器本地，不会上传到任何地方。</p>
+    <a class="link" href="https://console.anthropic.com/" target="_blank">👉 去获取 API Key（console.anthropic.com）</a>
+    <input type="password" id="apiKeyInput" placeholder="sk-ant-api03-..." style="margin-top:12px;">
+    <div class="btn-row">
+      <button class="btn-outline" onclick="closeSettings()">取消</button>
+      <button class="btn-start" style="padding:8px 20px;font-size:.85em;" onclick="saveApiKey()">保存</button>
+    </div>
+    <p id="apiKeyStatus" style="margin-top:8px;font-size:.8em;"></p>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════
+// 22 MAJOR ARCANA
+// ═══════════════════════════════════════
+const MAJOR_ARCANA = [
+  {id:0, name:'愚者', en:'The Fool', emoji:'🌟', upright:'新的开始、冒险、天真', reversed:'鲁莽、犹豫、错过机会', desc:'象征新的旅程与无限可能，也提醒勿忘初心。'},
+  {id:1, name:'魔术师', en:'The Magician', emoji:'🪄', upright:'创造力、自信、掌控力', reversed:'欺骗、能力未发挥、失控', desc:'拥有将想法化为现实的力量，创造力与意志的化身。'},
+  {id:2, name:'女祭司', en:'The High Priestess', emoji:'🔮', upright:'直觉、智慧、神秘', reversed:'隐藏的秘密、情感封闭、忽视直觉', desc:'倾听内心的声音，潜意识中藏着答案。'},
+  {id:3, name:'皇后', en:'The Empress', emoji:'👑', upright:'丰饶、母性、感官享受', reversed:'依赖、创造力枯竭、情感失衡', desc:'大地之母，丰收与爱的象征，滋养万物的力量。'},
+  {id:4, name:'皇帝', en:'The Emperor', emoji:'🏰', upright:'权威、秩序、稳定', reversed:'专制、失控、缺乏纪律', desc:'手握权杖的统治者，代表秩序、规则与掌控。'},
+  {id:5, name:'教皇', en:'The Hierophant', emoji:'📜', upright:'传统、信仰、导师', reversed:'打破规则、叛逆、盲从', desc:'精神导师，代表信仰体系与传统智慧的传承。'},
+  {id:6, name:'恋人', en:'The Lovers', emoji:'💞', upright:'爱情、和谐、选择', reversed:'分离、背叛、错误选择', desc:'不仅是爱情，更是人生中重要的抉择与价值观的体现。'},
+  {id:7, name:'战车', en:'The Chariot', emoji:'⚔️', upright:'胜利、决心、前进', reversed:'失控、失败、方向错误', desc:'驾驭黑白双兽的战车，代表意志力战胜一切障碍。'},
+  {id:8, name:'力量', en:'Strength', emoji:'🦁', upright:'勇气、耐心、内在力量', reversed:'软弱、失控、恐惧', desc:'以柔克刚，真正的力量来自内心而非蛮力。'},
+  {id:9, name:'隐者', en:'The Hermit', emoji:'🏮', upright:'内省、孤独、寻求真理', reversed:'孤立、逃避、迷失', desc:'提灯独行的智者，在沉默中寻找灵魂的答案。'},
+  {id:10, name:'命运之轮', en:'Wheel of Fortune', emoji:'🎡', upright:'命运转折、好运、循环', reversed:'厄运、停滞、抗拒改变', desc:'轮转不息，命运无常。幸与不幸皆是循环。'},
+  {id:11, name:'正义', en:'Justice', emoji:'⚖️', upright:'公正、真相、因果', reversed:'不公、偏见、逃避责任', desc:'天平与剑，一切行为终有因果报应。'},
+  {id:12, name:'倒吊人', en:'The Hanged Man', emoji:'🙃', upright:'牺牲、换位思考、等待', reversed:'徒劳、固执、错过', desc:'换个角度看世界，有时候放手是为了更好的获得。'},
+  {id:13, name:'死神', en:'Death', emoji:'💀', upright:'结束、转变、重生', reversed:'抗拒改变、停滞、恐惧', desc:'并非肉体的死亡，而是旧事物的终结与新生的开始。'},
+  {id:14, name:'节制', en:'Temperance', emoji:'🌊', upright:'平衡、调和、耐心', reversed:'极端、失衡、不耐烦', desc:'天使调和两杯之水，代表中庸之道与内心的平静。'},
+  {id:15, name:'恶魔', en:'The Devil', emoji:'😈', upright:'欲望、束缚、物质主义', reversed:'挣脱、觉醒、克服', desc:'锁链其实并不牢固。欲望是牢笼，也是成长的契机。'},
+  {id:16, name:'高塔', en:'The Tower', emoji:'🗼', upright:'剧变、崩塌、启示', reversed:'逃避、侥幸、缓慢崩塌', desc:'闪电击碎高塔，虚假的一切终将倒塌。灾难亦是解脱。'},
+  {id:17, name:'星星', en:'The Star', emoji:'⭐', upright:'希望、治愈、灵感', reversed:'失望、失去信心、消极', desc:'暴风雨后的第一颗星，希望永不熄灭。'},
+  {id:18, name:'月亮', en:'The Moon', emoji:'🌙', upright:'幻象、恐惧、潜意识', reversed:'真相浮现、混乱消退', desc:'月光下的道路朦胧不清，你所恐惧的可能只是幻影。'},
+  {id:19, name:'太阳', en:'The Sun', emoji:'☀️', upright:'快乐、成功、活力', reversed:'短暂挫折、阴霾、延迟', desc:'阳光普照，万物生长。最光明的牌面，一切向好。'},
+  {id:20, name:'审判', en:'Judgement', emoji:'📯', upright:'觉醒、原谅、新使命', reversed:'逃避召唤、后悔、自我怀疑', desc:'天使吹响号角，是时候面对过去，迎接灵魂的升华。'},
+  {id:21, name:'世界', en:'The World', emoji:'🌍', upright:'完成、圆满、旅程终点', reversed:'未完成、延迟、缺乏成就感', desc:'环中之舞，宇宙的圆满。一段旅程的完美终点，也是新的起点。'}
+];
+
+// ═══════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════
+let state = {
+  question: '',
+  cards: [],        // 3 drawn cards {arcana, isReversed}
+  flipped: [false, false, false],
+  reading: '',
+  apiKey: localStorage.getItem('tarot_api_key') || '',
+};
+
+const POSITIONS = ['过去', '现在', '未来'];
+const POS_EMOJI = ['🌅', '☀️', '🌙'];
+
+// ═══════════════════════════════════════
+// STARS
+// ═══════════════════════════════════════
+function createStars() {
+  const container = document.getElementById('stars');
+  for (let i = 0; i < 50; i++) {
+    const star = document.createElement('div');
+    star.className = 'star';
+    const size = Math.random() * 3 + 1;
+    star.style.cssText = `
+      width:${size}px; height:${size}px;
+      top:${Math.random()*100}%; left:${Math.random()*100}%;
+      --dur:${Math.random()*3+2}s; --delay:${Math.random()*3}s;
+    `;
+    container.appendChild(star);
+  }
+}
+
+// ═══════════════════════════════════════
+// SCREEN NAVIGATION
+// ═══════════════════════════════════════
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  const el = document.getElementById('screen-' + name);
+  if (el) { el.classList.add('active'); window.scrollTo({top:0, behavior:'smooth'}); }
+}
+
+// ═══════════════════════════════════════
+// QUESTION
+// ═══════════════════════════════════════
+function setQuestion(q) {
+  document.getElementById('questionInput').value = q;
+}
+
+function startDivination() {
+  const q = document.getElementById('questionInput').value.trim();
+  if (!q) {
+    document.getElementById('questionInput').focus();
+    document.getElementById('questionInput').style.borderColor = '#d44040';
+    setTimeout(() => document.getElementById('questionInput').style.borderColor = '', 1500);
+    return;
+  }
+  state.question = q;
+  state.flipped = [false, false, false];
+  state.reading = '';
+
+  // Shuffle and draw 3
+  const shuffled = [...MAJOR_ARCANA].sort(() => Math.random() - 0.5);
+  state.cards = shuffled.slice(0, 3).map(c => ({
+    arcana: c,
+    isReversed: Math.random() > 0.5
+  }));
+
+  // Reset card displays
+  for (let i = 0; i < 3; i++) {
+    const wrapper = document.getElementById('card' + i);
+    wrapper.classList.remove('flipped', 'revealed');
+    const face = wrapper.querySelector('.card-face');
+    face.classList.remove('reversed');
+    face.querySelector('.card-emoji').textContent = '';
+    face.querySelector('.card-name').textContent = '';
+    face.querySelector('.card-keywords').textContent = '';
+    face.querySelector('.card-position').textContent = '';
+  }
+
+  document.getElementById('drawHint').textContent = '👆 依次点击三张牌翻开';
+  document.getElementById('drawHint').style.display = '';
+  showScreen('draw');
+}
+
+// ═══════════════════════════════════════
+// CARD FLIP
+// ═══════════════════════════════════════
+function flipCard(index) {
+  if (state.flipped[index]) return; // already flipped
+
+  const card = state.cards[index];
+  const wrapper = document.getElementById('card' + index);
+  const face = wrapper.querySelector('.card-face');
+
+  // Fill card face
+  face.querySelector('.card-emoji').textContent = card.arcana.emoji;
+  face.querySelector('.card-name').textContent = card.arcana.name + ' · ' + card.arcana.en;
+  face.querySelector('.card-keywords').textContent = card.isReversed
+    ? '逆位：' + card.arcana.reversed
+    : '正位：' + card.arcana.upright;
+  face.querySelector('.card-position').textContent = POS_EMOJI[index] + ' ' + POSITIONS[index];
+
+  if (card.isReversed) face.classList.add('reversed');
+
+  // Animate
+  wrapper.classList.add('flipped');
+  state.flipped[index] = true;
+
+  // Check if all flipped
+  if (state.flipped.every(f => f)) {
+    document.getElementById('drawHint').textContent = '✨ 全部翻开！正在解读…';
+    setTimeout(() => showReading(), 1200);
+  } else {
+    document.getElementById('drawHint').textContent =
+      '👆 还有 ' + (3 - state.flipped.filter(f=>f).length) + ' 张牌等待翻开';
+  }
+}
+
+// ═══════════════════════════════════════
+// READING SCREEN
+// ═══════════════════════════════════════
+function showReading() {
+  showScreen('reading');
+  document.getElementById('readingQuestion').textContent = '问：' + state.question;
+  document.getElementById('readingText').className = 'reading-text loading';
+  document.getElementById('readingText').textContent = '';
+  document.getElementById('btnShare').style.display = 'none';
+
+  // Show mini cards
+  let cardsHtml = '';
+  state.cards.forEach((c, i) => {
+    cardsHtml += `
+      <div class="mini-card">
+        <div class="emoji" style="${c.isReversed ? 'transform:rotate(180deg);' : ''}">${c.arcana.emoji}</div>
+        <div class="name">${c.arcana.name}</div>
+        <div class="pos">${c.isReversed ? '逆位' : '正位'} · ${POSITIONS[i]}</div>
+      </div>`;
+  });
+  document.getElementById('readingCards').innerHTML = cardsHtml;
+
+  // Call AI
+  callAI();
+}
+
+async function callAI() {
+  const key = state.apiKey;
+  if (!key) {
+    document.getElementById('readingText').textContent =
+      '⚠️ 请先设置 API Key 才能使用 AI 解读。\n\n点击右下角 ⚙️ 设置你的 Anthropic API Key。\n\n获取地址：https://console.anthropic.com/';
+    document.getElementById('readingText').className = 'reading-text';
+    return;
+  }
+
+  // Build prompt
+  const cardDescriptions = state.cards.map((c, i) =>
+    `${i+1}. ${c.arcana.name}（${c.arcana.en}）${c.isReversed ? '逆位' : '正位'}：${c.isReversed ? c.arcana.reversed : c.arcana.upright}\n   含义：${c.arcana.desc}`
+  ).join('\n\n');
+
+  const systemPrompt = `你是一位神秘而智慧的塔罗占卜师，名叫"月影"。你的解读风格诗意、神秘、温暖，既有深度又易懂。你必须根据用户的问题和抽到的三张塔罗牌，给出一段个性化占卜解读。严格按以下结构回复：
+
+1️⃣ 总体氛围 —— 一两句话概括牌阵整体能量
+2️⃣ 过去之牌（第一张）—— 解读过去的影响
+3️⃣ 现在之牌（第二张）—— 解读当下的状态
+4️⃣ 未来之牌（第三张）—— 解读未来的走向
+5️⃣ 给问卜者的建议 —— 温暖有力的收尾
+
+用中文回复，自然分段。不要用markdown格式。每段之间空一行。总字数300-500字。`;
+
+  const userMessage = `我的问题：${state.question}
+
+牌阵：过去·现在·未来（三张牌阵）
+
+${cardDescriptions}
+
+请为我的占卜给出解读。`;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMessage }]
+      })
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      if (res.status === 401) throw new Error('API Key 无效，请检查后重新设置。');
+      throw new Error('API 请求失败：' + res.status + ' ' + err.slice(0, 100));
+    }
+
+    const data = await res.json();
+    state.reading = data.content[0].text;
+
+    document.getElementById('readingText').textContent = state.reading;
+    document.getElementById('readingText').className = 'reading-text';
+    document.getElementById('btnShare').style.display = '';
+
+    // Save to history
+    saveToHistory();
+
+  } catch (e) {
+    document.getElementById('readingText').textContent = '😔 ' + e.message;
+    document.getElementById('readingText').className = 'reading-text';
+  }
+}
+
+// ═══════════════════════════════════════
+// HISTORY
+// ═══════════════════════════════════════
+function saveToHistory() {
+  let history = [];
+  try { history = JSON.parse(localStorage.getItem('tarot_history') || '[]'); } catch(e) {}
+  history.unshift({
+    question: state.question,
+    cards: state.cards.map(c => ({
+      name: c.arcana.name,
+      emoji: c.arcana.emoji,
+      isReversed: c.isReversed
+    })),
+    reading: state.reading,
+    date: new Date().toISOString()
+  });
+  if (history.length > 20) history = history.slice(0, 20);
+  localStorage.setItem('tarot_history', JSON.stringify(history));
+}
+
+// ═══════════════════════════════════════
+// SETTINGS
+// ═══════════════════════════════════════
+function openSettings() {
+  document.getElementById('apiKeyInput').value = state.apiKey;
+  document.getElementById('apiKeyStatus').textContent = state.apiKey ? '✅ 已设置 API Key' : '';
+  document.getElementById('modal-settings').classList.add('show');
+}
+function closeSettings() {
+  document.getElementById('modal-settings').classList.remove('show');
+}
+function saveApiKey() {
+  const key = document.getElementById('apiKeyInput').value.trim();
+  if (!key) return;
+  state.apiKey = key;
+  localStorage.setItem('tarot_api_key', key);
+  document.getElementById('apiKeyStatus').textContent = '✅ 已保存！';
+  setTimeout(closeSettings, 800);
+}
+
+// ═══════════════════════════════════════
+// RESET
+// ═══════════════════════════════════════
+function resetDivination() {
+  state.cards = [];
+  state.flipped = [false, false, false];
+  state.reading = '';
+  showScreen('question');
+  document.getElementById('questionInput').value = '';
+}
+
+// ═══════════════════════════════════════
+// SHARE
+// ═══════════════════════════════════════
+function shareReading() {
+  const text = `🔮 AI塔罗占卜\n\n问：${state.question}\n\n${state.cards.map((c,i) =>
+    POS_EMOJI[i] + ' ' + POSITIONS[i] + '：' + c.arcana.emoji + ' ' + c.arcana.name + (c.isReversed ? '（逆位）' : '（正位）')
+  ).join('\n')}\n\n${state.reading.slice(0, 200)}...`;
+  if (navigator.share) {
+    navigator.share({ title: 'AI塔罗占卜', text });
+  } else {
+    navigator.clipboard.writeText(text).then(() => alert('已复制到剪贴板！'));
+  }
+}
+
+// ═══════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════
+createStars();
+showScreen('question');
+
+// Close modal on Escape
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeSettings();
+});
+
+console.log('🔮 AI 塔罗牌占卜 已就绪');
+console.log('🌙 22张大阿尔卡纳 · Claude AI 解读 · 三张牌阵');
+</script>
+</body>
+</html>
